@@ -157,27 +157,32 @@ def Tf_file_parse(tf_file):
   return tf_file_name
 
 
-def Get_domain(tf_file, directory):
+def Is_internal(tf_file, directory):
 
-  command = subprocess.run("grep -rP '\s*\"internal\"\s*\=\s*true' " + os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
-  #command = subprocess.run("grep -rP internal " + os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
+  command = ("grep -rP '\s*\"internal\"\s*\=\s*true' " + os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
+  stdout = subprocess.getoutput(command)
 
-  try:
-    grepOut = subprocess.run(command)
-  except subprocess.CalledProcessError as grepexc:
-    print("error code", grepexc.returncode, grepexc.output)
-
-  print(grepOut.returncode)
+  if len(stdout) > 0:
+    return True
+  else:
+    return False
 
 
 def Get_locals_block(service_name, directory):
 
-  domain = Get_domain(service_name, directory)
-  us_service_name = service_name.replace('-', '_')
+  internal = Is_internal(service_name, directory)
+  unsc_service_name = service_name.replace('-', '_')
 
-  locals_block = 'locals {\n  %s_name = "%s"\n  %s_fqdn = "${local.%s_name}.${terraform.workspace}-%s.com"\n}' % (us_service_name, us_service_name, us_service_name, us_service_name, domain)
+  lobl = {}
 
-  print(locals_block)
+  lobl.update({'internal':'%s_is_internal = %s' % (unsc_service_name, internal)})
+  lobl.update({'name':'%s_name = "%s"' % (unsc_service_name, unsc_service_name)})
+  lobl.update({'fqdn':'%s_fqdn = "${local.%s_name}.${terraform.workspace}-%s' % (unsc_service_name, unsc_service_name, unsc_service_name)})
+  lobl.update({'url':'%s_url = "${%s_is_internal ? http://{locals.%s_fqdn}-net0ps.com : https://{locals.%s_fqdn}.comtravo.com}"' % (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name)})
+
+  locals_block = 'locals {\n  %s\n  %s\n  %s\n  %s\n}' % (lobl.get('internal'), lobl.get('name'), lobl.get('fqdn'), lobl.get('url'))
+
+  return locals_block
 
 
 
