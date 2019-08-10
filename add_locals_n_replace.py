@@ -15,8 +15,8 @@ def parse_options(operations=[]):
   parser.add_argument(
                         '--directory',
                         type=str,
-                        help='Folder with Terraform files - Gets checked recursively including subdirectories',
-                        default='/home/ubuntu/ct-backend/terraform'
+                        help='Folder with Terraform files',
+                        default='/home/ubuntu/ct-backend/terraform/services'
                         #required=True
                       )
 
@@ -163,9 +163,9 @@ def Is_internal(tf_file, directory):
   stdout = subprocess.getoutput(command)
 
   if len(stdout) > 0:
-    return True
-  else:
     return False
+  else:
+    return True
 
 
 def Get_locals_block(service_name, directory):
@@ -175,10 +175,10 @@ def Get_locals_block(service_name, directory):
 
   lobl = []
 
-  lobl.append('%s_is_internal = %s' % (unsc_service_name, internal))
+  lobl.append('%s_is_internal = %s' % (unsc_service_name, str(internal).lower()))
   lobl.append('%s_name = "%s"' % (unsc_service_name, unsc_service_name))
-  lobl.append('%s_fqdn = "${local.%s_name.${terraform.workspace}-%s' % (unsc_service_name, unsc_service_name, unsc_service_name))
-  lobl.append('%s_url = "${%s_is_internal ? http://{locals.%s_fqdn}-net0ps.com : https://{locals.%s_fqdn}.comtravo.com}"' % (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name))
+  lobl.append('%s_fqdn = "${local.%s_name}.${terraform.workspace}-%s"' % (unsc_service_name, unsc_service_name, unsc_service_name))
+  lobl.append('%s_url = "${%s_is_internal ? "http://${locals.%s_fqdn}-net0ps.com" : "https://${locals.%s_fqdn}.comtravo.com"}"' % (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name))
 
   locals_block = 'locals {\n'
 
@@ -192,6 +192,21 @@ def Get_locals_block(service_name, directory):
   return locals_block
 
 
+def Prefix_locals_block(locals_block, tf_file, directory):
+
+  path_to_file = os.path.join(directory, tf_file)
+  with open(path_to_file) as file:
+    file_content = ''
+    for line in file:
+      file_content += line
+
+  new_content = locals_block + '\n' + file_content
+
+  with open(path_to_file, 'w') as file:
+    file.write(new_content)
+
+  print('Successfully added locals block to "%s"' % path_to_file)
+
 
 def main():
 
@@ -203,9 +218,9 @@ def main():
 
   service_name = Tf_file_parse(tf_file)
 
-  Get_locals_block(service_name, DIR)
+  locals_block = Get_locals_block(service_name, DIR)
 
-  task_definitions = Get_definition_from_tf_files(tf_files_dictionary)
+  Prefix_locals_block(locals_block, tf_file, DIR)
 
 '''
   exit_code = Print_status(
