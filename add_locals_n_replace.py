@@ -168,52 +168,80 @@ def Is_internal(tf_file, directory):
     return True
 
 
-def Get_locals_block(service_name, directory):
+def Get_locals(service_name, directory):
 
   internal = Is_internal(service_name, directory)
   unsc_service_name = service_name.replace('-', '_')
 
   lobl = []
 
-  lobl.append('%s_is_internal = %s' % (unsc_service_name, str(internal).lower()))
-  lobl.append('%s_name = "%s"' % (unsc_service_name, unsc_service_name))
-  lobl.append('%s_fqdn = "${local.%s_name}.${terraform.workspace}${%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
-    (unsc_service_name, unsc_service_name, unsc_service_name)
+  lobl.append(('%s_is_internal' % (unsc_service_name), '%s' % (str(internal).lower())))
+  lobl.append(('%s_name' % (unsc_service_name), '"%s"' % (unsc_service_name)))
+  lobl.append(('%s_fqdn' % (unsc_service_name), '"${local.%s_name}.${terraform.workspace}${%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+    (unsc_service_name, unsc_service_name))
   )
-  lobl.append('%s_url = "${%s_is_internal ? "http://${locals.%s_fqdn}" : "https://${locals.%s_fqdn}"}"' %
-    (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name)
+  lobl.append(('%s_url' % (unsc_service_name), '"${%s_is_internal ? "http://${locals.%s_fqdn}" : "https://${locals.%s_fqdn}"}"' %
+    (unsc_service_name, unsc_service_name, unsc_service_name))
   )
 
+  return lobl
+
+
+def Get_locals_block(lobl):
   locals_block = 'locals {\n'
 
   for item in lobl:
-    locals_block += '  %s\n' % (item)
+    locals_block += '  %s = %s\n' % (item[0], item[1])
 
   locals_block += '}'
 
   return locals_block
 
 
-def Prefix_locals_block(locals_block, tf_file, directory):
+def Prefix_locals_block(lobl, tf_file, directory):
 
   path_to_file = os.path.join(directory, tf_file)
+  regex_url = re.compile('.*http(|s)\:\\/\\/.*')
+  regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
+  regex_internal = re.compile('\\s*internal\\s+\\=.*')
+
+  service_name = Tf_file_parse(tf_file)
+
+  print(lobl)
+
+  for item in lobl:
+    if 'name' in item[0]:
+      name = item[0]
+    elif 'url' in item[0]:
+      url = item[0]
+    elif 'fqdn' in item[0]:
+      fqdn = item[0]
+    elif 'internal' in item[0]:
+      internal = item[0]
+
   with open(path_to_file) as file:
     file_content = ''
     for line in file:
       if '=' in line and service_name in line:
-        if 'http://' in line or 'https://' in line: # use regex here!
-          line = line.replace(service_name, url)
-        elif '-net0ps.com' in line or '.comtravo.com' in line: # use regex here!
-          line = line.replace(service_name, fqdn)
+        if re.match(regex_url, line):
+          line = line.replace(service_name, '"${local.%s}"' % url)
+        elif re.match(regex_fqdn, line):
+          line = line.replace(service_name, '"${local.%s}"' % fqdn)
+        elif re.match(regex_internal, line):
+          line = 'internal = ' + internal
         else:
-          line = line.replace(service_name, name)
+          line = line.replace(service_name, '"${local.%s}"' % name)
+        while '\"\"' in line:
+          line = line.replace('\"\"', '\"')
       file_content += line
 
-  new_content = locals_block + '\n' + file_content
-  '''
+  new_content = Get_locals_block(lobl) + '\n' + file_content
+
+  #print(new_content)
+
   with open(path_to_file, 'w') as file:
+    file.seek(0)
     file.write(new_content)
-  '''
 
   print('Successfully added locals block to "%s"' % path_to_file)
 
@@ -228,9 +256,9 @@ def main():
 
   service_name = Tf_file_parse(tf_file)
 
-  locals_block = Get_locals_block(service_name, DIR)
+  lobl = Get_locals(service_name, DIR)
 
-  Prefix_locals_block(locals_block, tf_file, DIR)
+  Prefix_locals_block(lobl, tf_file, DIR)
 
 '''
   exit_code = Print_status(
