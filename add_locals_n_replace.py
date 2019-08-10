@@ -173,14 +173,21 @@ def Get_locals_block(service_name, directory):
   internal = Is_internal(service_name, directory)
   unsc_service_name = service_name.replace('-', '_')
 
-  lobl = {}
+  lobl = []
 
-  lobl.update({'internal':'%s_is_internal = %s' % (unsc_service_name, internal)})
-  lobl.update({'name':'%s_name = "%s"' % (unsc_service_name, unsc_service_name)})
-  lobl.update({'fqdn':'%s_fqdn = "${local.%s_name}.${terraform.workspace}-%s' % (unsc_service_name, unsc_service_name, unsc_service_name)})
-  lobl.update({'url':'%s_url = "${%s_is_internal ? http://{locals.%s_fqdn}-net0ps.com : https://{locals.%s_fqdn}.comtravo.com}"' % (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name)})
+  lobl.append('%s_is_internal = %s' % (unsc_service_name, internal))
+  lobl.append('%s_name = "%s"' % (unsc_service_name, unsc_service_name))
+  lobl.append('%s_fqdn = "${local.%s_name.${terraform.workspace}-%s' % (unsc_service_name, unsc_service_name, unsc_service_name))
+  lobl.append('%s_url = "${%s_is_internal ? http://{locals.%s_fqdn}-net0ps.com : https://{locals.%s_fqdn}.comtravo.com}"' % (unsc_service_name, unsc_service_name, unsc_service_name, unsc_service_name))
 
-  locals_block = 'locals {\n  %s\n  %s\n  %s\n  %s\n}' % (lobl.get('internal'), lobl.get('name'), lobl.get('fqdn'), lobl.get('url'))
+  locals_block = 'locals {\n'
+
+  for item in lobl:
+    locals_block += '  %s\n' % (item)
+
+  locals_block += '}'
+
+  #print(locals_block)
 
   return locals_block
 
