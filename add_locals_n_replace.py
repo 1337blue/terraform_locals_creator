@@ -36,39 +36,45 @@ def Get_tf_files_in_dir(dir):
 
   return terraform_files
 
-'''
-def Subtitute_tf_vars(line):
+def Find_subtitution(line):
 
   i = -1
   stack = 0
-  initial_dollar = 0
-  tf_var = ''
-  var_replacement = 'some-var-here'
+  initial_qoutation_mark = 0
+  closing_qoutation_mark = 1
+  subtitutes = set()
 
   for char in line:
     i += 1
-    if line[i - 1] != '\\' and stack > 0:
-      if char == '{' and initial_dollar != (i - 1):
-        stack += 1
-      if char == '}':
+    if line[i] == '"':
+      if stack == 1:
         stack -= 1
-        if stack == 0:
-          tf_var = line[initial_dollar - 1:i + 1]
+        closing_qoutation_mark = i
+        subtitutes.add(line[initial_qoutation_mark:closing_qoutation_mark + 1])
+      elif stack == 0:
+        stack += 1
+        initial_qoutation_mark = i
 
-    if char == '{' and line[i - 1] == '$' and line[i - 2] != '\\' and stack == 0:
-      initial_dollar = i
-      stack = 1
+  return subtitutes
 
-    if tf_var != '':
-      lin_len = len(line)
-      line = line.replace(tf_var, var_replacement)
-      line = line.replace('""', '"')
-      i -= lin_len - len(line)
-      tf_var = ''
 
-  return line
+def Subtitute_w_tf_var():
+  regex_url = re.compile('.*http(|s)\:\\/\\/.*')
+  regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
+  regex_internal = re.compile('\\s*internal\\s+\\=.*')
 
-'''
+  for item in lobl:
+    if 'name' in item[0]:
+      name = item[0]
+    elif 'url' in item[0]:
+      url = item[0]
+    elif 'fqdn' in item[0]:
+      fqdn = item[0]
+    elif 'internal' in item[0]:
+      internal = item[0]
+
+
+
 
 
 def Get_tf_files_wo_locals(terraform_files):
@@ -94,13 +100,6 @@ def Get_tf_files_wo_locals(terraform_files):
     if len(locals_block) == 0:
       return key
 
-'''
-    if len(locals_block) > 0:
-      if not 'name' in locals_block and 'fqdn' in locals_block:
-        return key
-    else:
-      return key
-'''
 '''
 def Get_definition_from_tf_files(terraform_files):
 
@@ -160,9 +159,20 @@ def Tf_file_parse(tf_file):
   return tf_file_name
 
 
+def Is_api(tf_file, directory):
+
+  command = ("grep -rP '.*%s-api.*' %s" % (tf_file, os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file))))
+  stdout = subprocess.getoutput(command)
+
+  if len(stdout) > 0:
+    return False
+  else:
+    return True
+
+
 def Is_internal(tf_file, directory):
 
-  command = ("grep -rP '\s*\"internal\"\s*\=\s*true' " + os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
+  command = ("grep -rP '\s*\"internal\"\s*\=\s*true' %s" % os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
   stdout = subprocess.getoutput(command)
 
   if len(stdout) > 0:
@@ -172,31 +182,99 @@ def Is_internal(tf_file, directory):
 
 
 def Get_locals(service_name, directory):
-
+  '''
+  Return a dict with the following keys:
+    internal
+    name
+    fqdn
+    url
+  Each key has a set as value that stands for the var name and the var value
+  '''
   internal = Is_internal(service_name, directory)
+  is_api = Is_api(service_name, directory)
   unsc_service_name = service_name.replace('-', '_')
 
-  lobl = []
+  lobl = {}
 
-  lobl.append(('%s_is_internal' % (unsc_service_name), '%s' % (str(internal).lower())))
-  lobl.append(('%s_name' % (unsc_service_name), '"%s"' % (unsc_service_name)))
-  lobl.append(('%s_fqdn' % (unsc_service_name), '"${local.%s_name}.${terraform.workspace}${%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+  lobl.update({'internal':
+    ('%s_is_internal' % unsc_service_name, '%s' % str(internal).lower())
+  })
+  lobl.update({'name':
+    ('%s_name' % unsc_service_name, '"%s"' % unsc_service_name)
+  })
+  lobl.update({'fqdn':
+    ('%s_fqdn' % unsc_service_name, '"${local.%s_name}.${terraform.workspace}${local.%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
     (unsc_service_name, unsc_service_name))
-  )
-  lobl.append(('%s_url' % (unsc_service_name), '"${%s_is_internal ? "http://${locals.%s_fqdn}" : "https://${locals.%s_fqdn}"}"' %
-    (unsc_service_name, unsc_service_name, unsc_service_name))
-  )
+  })
+  lobl.update({'url':
+    ('%s_url' % unsc_service_name, '"${local.%s_is_internal ? "http" : "https"} ://${local.%s_fqdn}"' %
+    (unsc_service_name, unsc_service_name))
+  })
+
+  if Is_api:
+    lobl.update({'name-api':
+      ('%s_api_name' % unsc_service_name, '"${local.%s_name}-api"' % unsc_service_name)
+    })
+    lobl.update({'fqdn-api':
+      ('%s_api_fqdn' % unsc_service_name, '"${local.%s_name-api}.${terraform.workspace}${local.%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+      (unsc_service_name, unsc_service_name))
+    })
+    lobl.update({'url-api':
+      ('%s_api_url' % unsc_service_name, '"${local.%s_is_internal ? "http" : "https"} ://${local.%s_fqdn-api}"' %
+      (unsc_service_name, unsc_service_name))
+    })
+
 
   return lobl
 
 
 def Get_locals_block(lobl):
-  locals_block = 'locals {\n'
+  print(lobl)
+  locals_block = (
+    (
+      'locals {\n' +
+      '  %s = %s\n' +
+      '  %s = %s\n' +
+      '  %s = %s\n' +
+      '  %s = %s\n'
+    ) %
+    (
+      lobl.get('internal')[0], lobl.get('internal')[1],
+      lobl.get('name')[0], lobl.get('name')[1],
+      lobl.get('fqdn')[0], lobl.get('fqdn')[1],
+      lobl.get('url')[0], lobl.get('url')[1]
+    )
+  )
 
-  for item in lobl:
-    locals_block += '  %s = %s\n' % (item[0], item[1])
+  api = ['name', 'fqdn', 'url']
 
+  for item in api:
+    if lobl.get(item + '-api') != None:
+      locals_block += (
+        '  %s = %s\n' %
+        (
+          lobl.get(item + '-api')[0], lobl.get(item + '-api')[1]
+        )
+      )
+  '''
+  if lobl.get('name-api') != None:
+    locals_block += (
+      '  %s = %s\n' %
+      lobl.get('name-api')[0], lobl.get('name-api')[1]
+    )
+  if lobl.get('fqdn-api') != None:
+    locals_block += (
+      '  %s = %s\n' %
+      lobl.get('fqdn-api')[0], lobl.get('fqdn-api')[1]
+    )
+  if lobl.get('url-api') != None:
+    locals_block += (
+      '  %s = %s\n' %
+      lobl.get('url-api')[0], lobl.get('url-api')[1]
+    )
+  '''
   locals_block += '}'
+
 
   return locals_block
 
@@ -223,12 +301,9 @@ def Prefix_locals_block(lobl, tf_file, directory):
 
 def Subtitute_tf_vars(lobl, tf_file, directory):
 
-  path_to_file = os.path.join(directory, tf_file)
   regex_url = re.compile('.*http(|s)\:\\/\\/.*')
   regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
   regex_internal = re.compile('\\s*internal\\s+\\=.*')
-
-  service_name = Tf_file_parse(tf_file)
 
   for item in lobl:
     if 'name' in item[0]:
@@ -240,45 +315,74 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
     elif 'internal' in item[0]:
       internal = item[0]
 
-  with open(path_to_file) as file:
-    file_content = ''
-    for line in file:
-      if (
-        ( '=' in line or ': "' in line )
-        and service_name in line
-        and not "policy" in line
-        and not "role" in line
-        and not '"image":' in line
-        and not name in line
-        and not url in line
-        and not fqdn in line
-        and not internal in line
-        ):
-        if '"' in line:
-          tf_var = '${local.%s}'
-        else:
-          tf_var = '"${local.%s}"'
-        if re.match(regex_url, line):
-          line = line.replace(service_name, tf_var % url)
-        elif re.match(regex_fqdn, line):
-          line = line.replace(service_name, tf_var % fqdn)
-        elif re.match(regex_internal, line):
-          line = 'internal = ' + internal
-        else:
-          line = line.replace(service_name, tf_var % name)
-        while '\"\"' in line:
-          line = line.replace('\"\"', '\"')
-      file_content += line
-    file.close()
+  service_name = Tf_file_parse(tf_file)
 
-  new_content = file_content
+  command = ("grep -rl '%s' %s" % (service_name, os.path.join(directory)))
+  stdout = subprocess.getoutput(command)
 
-  with open(path_to_file, 'w') as file:
-    file.seek(0)
-    file.write(new_content)
-    file.close()
+  paths_to_files_to_be_subtituted = set(stdout.split('\n'))
 
-  print('Successfully subtituted vars in "%s"' % path_to_file)
+  for path_to_file in paths_to_files_to_be_subtituted:
+    path_to_file = os.path.join(path_to_file)
+
+    with open(path_to_file) as file:
+      file_content = ''
+      for line in file:
+        for item in Find_subtitution(line):
+          if service_name in line:
+            if '"' in item[1:-1]:
+              tf_var = '${local.%s}'
+            else:
+              tf_var = '"${local.%s}"'
+            if re.match(regex_url, item):
+              line = line.replace(item, tf_var % url)
+            elif re.match(regex_fqdn, line):
+              line = line.replace(item, tf_var % fqdn)
+            elif service_name in item:
+              line = line.replace(item, name)
+            elif re.match(regex_internal, line):
+              line = 'internal = ' + internal
+
+          '''
+        if (
+          ( '=' in line or ': "' in line )
+          and service_name in line
+          and not "policy" in line
+          and not "role" in line
+          and not '"image":' in line
+          and not name in line
+          and not url in line
+          and not fqdn in line
+          and not internal in line
+          ):
+          if '"' in line:
+            tf_var = '${local.%s}'
+          else:
+            tf_var = '"${local.%s}"'
+          if re.match(regex_url, line):
+            line = line.replace(service_name, tf_var % url)
+          elif re.match(regex_fqdn, line):
+            line = line.replace(service_name, tf_var % fqdn)
+          elif re.match(regex_internal, line):
+            line = 'internal = ' + internal
+          else:
+            line = line.replace(service_name, tf_var % name)
+            '''
+
+          while '\"\"' in line:
+            line = line.replace('\"\"', '\"')
+        file_content += line
+      file.close()
+
+    new_content = file_content
+
+    with open(path_to_file, 'w') as file:
+      file.seek(0)
+      file.write(new_content)
+      file.close()
+
+    #print('Successfully subtituted vars in "%s"' % path_to_file)
+
 
 
 def main():
@@ -295,7 +399,7 @@ def main():
 
   Prefix_locals_block(lobl, tf_file, DIR)
 
-  Subtitute_tf_vars(lobl, tf_file, DIR)
+  #Subtitute_tf_vars(lobl, tf_file, DIR)
 
 '''
   exit_code = Print_status(
@@ -310,4 +414,3 @@ def main():
 
 if __name__ == "__main__":
   main()
-
