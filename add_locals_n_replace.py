@@ -36,7 +36,7 @@ def Get_tf_files_in_dir(dir):
 
   return terraform_files
 
-
+'''
 def Subtitute_tf_vars(line):
 
   i = -1
@@ -68,6 +68,9 @@ def Subtitute_tf_vars(line):
 
   return line
 
+'''
+
+
 def Get_tf_files_wo_locals(terraform_files):
 
   regex_definition_end = re.compile('\}.*')
@@ -98,7 +101,7 @@ def Get_tf_files_wo_locals(terraform_files):
     else:
       return key
 '''
-
+'''
 def Get_definition_from_tf_files(terraform_files):
 
   regex_definition_start = re.compile('\s*\S+\s=\s<<DEFINITION')
@@ -125,7 +128,7 @@ def Get_definition_from_tf_files(terraform_files):
         output.update({key:set_of_definitions})
 
   return output
-
+'''
 
 '''
 def Print_status(errors, no_of_tf_files, no_of_definitions, directory):
@@ -201,13 +204,31 @@ def Get_locals_block(lobl):
 def Prefix_locals_block(lobl, tf_file, directory):
 
   path_to_file = os.path.join(directory, tf_file)
+  service_name = Tf_file_parse(tf_file)
+
+  with open(path_to_file) as file:
+    file_content = ''
+    for line in file:
+      file_content += line
+
+
+  new_content = Get_locals_block(lobl) + '\n' + file_content
+
+  with open(path_to_file, 'w') as file:
+    file.write(new_content)
+    file.close()
+
+  print('Successfully added locals block to "%s"' % path_to_file)
+
+
+def Subtitute_tf_vars(lobl, tf_file, directory):
+
+  path_to_file = os.path.join(directory, tf_file)
   regex_url = re.compile('.*http(|s)\:\\/\\/.*')
   regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
   regex_internal = re.compile('\\s*internal\\s+\\=.*')
 
   service_name = Tf_file_parse(tf_file)
-
-  print(lobl)
 
   for item in lobl:
     if 'name' in item[0]:
@@ -222,28 +243,42 @@ def Prefix_locals_block(lobl, tf_file, directory):
   with open(path_to_file) as file:
     file_content = ''
     for line in file:
-      if '=' in line and service_name in line:
+      if (
+        ( '=' in line or ': "' in line )
+        and service_name in line
+        and not "policy" in line
+        and not "role" in line
+        and not '"image":' in line
+        and not name in line
+        and not url in line
+        and not fqdn in line
+        and not internal in line
+        ):
+        if '"' in line:
+          tf_var = '${local.%s}'
+        else:
+          tf_var = '"${local.%s}"'
         if re.match(regex_url, line):
-          line = line.replace(service_name, '"${local.%s}"' % url)
+          line = line.replace(service_name, tf_var % url)
         elif re.match(regex_fqdn, line):
-          line = line.replace(service_name, '"${local.%s}"' % fqdn)
+          line = line.replace(service_name, tf_var % fqdn)
         elif re.match(regex_internal, line):
           line = 'internal = ' + internal
         else:
-          line = line.replace(service_name, '"${local.%s}"' % name)
+          line = line.replace(service_name, tf_var % name)
         while '\"\"' in line:
           line = line.replace('\"\"', '\"')
       file_content += line
+    file.close()
 
-  new_content = Get_locals_block(lobl) + '\n' + file_content
-
-  #print(new_content)
+  new_content = file_content
 
   with open(path_to_file, 'w') as file:
     file.seek(0)
     file.write(new_content)
+    file.close()
 
-  print('Successfully added locals block to "%s"' % path_to_file)
+  print('Successfully subtituted vars in "%s"' % path_to_file)
 
 
 def main():
@@ -259,6 +294,8 @@ def main():
   lobl = Get_locals(service_name, DIR)
 
   Prefix_locals_block(lobl, tf_file, DIR)
+
+  Subtitute_tf_vars(lobl, tf_file, DIR)
 
 '''
   exit_code = Print_status(
