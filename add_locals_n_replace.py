@@ -65,6 +65,35 @@ def Find_subtitution(line):
   return subtitutes
 
 
+def Not_inside_tf_var(item, to_be_replaced):
+
+  start = item.find(to_be_replaced)
+
+  i = -1
+  stack = 0
+  initial_dollar = 0
+
+  for char in item:
+    i += 1
+    if i == start:
+      if stack == 0:
+        return True
+      else:
+        return False
+
+    if item[i - 1] != '\\' and stack > 0:
+      if char == '{' and initial_dollar != (i - 1):
+        stack += 1
+      if char == '}':
+        stack -= 1
+        if stack == 0:
+          tf_var = item[initial_dollar - 1:i + 1]
+
+    if char == '{' and item[i - 1] == '$' and item[i - 2] != '\\' and stack == 0:
+      initial_dollar = i
+      stack = 1
+
+
 def Subtitute_w_tf_vars(line, lobl):
 
   locals_block = Get_locals_block(lobl)
@@ -78,6 +107,11 @@ def Subtitute_w_tf_vars(line, lobl):
   for item in LOCALS_ORDER:
     subtitutes.append('${lookup(local.%s, "%s")}' % (service_name, item))
 
+  for item in LOCALS_ORDER:
+    if item != 'is_internal':
+      subtitutes.append('${lookup(local.api_%s, "%s-api")}' % (service_name, item))
+
+
   regex_internal_str = '\\s*internal\\s+\\=.*'
   regex_fqdn_str = '.*%s\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
   regex_fqdn_api_str = '.*%s-api\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
@@ -88,23 +122,24 @@ def Subtitute_w_tf_vars(line, lobl):
   regex_url = re.compile(regex_url_str[:-2] + regex_fqdn_str)
 
   if service_name in line and line not in locals_block and ('=' in line or ':' in line):
-    if re.match(re.compile(regex_url_str + api_suffix), line):
-      line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), subtitutes[3], line)
+    if re.match(re.compile(regex_url_str + Is_api_in_item(line)), line):
+      line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), (subtitutes[3] + '_api'), line)
     elif re.match(re.compile(regex_url_str), line):
       line = re.sub(regex_url_str[2:-2], subtitutes[3], line)
     elif re.match(re.compile(regex_fqdn_api_str), line):
-      line = re.sub(regex_fqdn_api_str[2:-2], subtitutes[2], line)
+      line = re.sub(regex_fqdn_api_str[2:-2], (subtitutes[2] + '_api'), line)
     elif re.match(re.compile(regex_fqdn_str), line):
       line = re.sub(regex_fqdn_str[2:-2], subtitutes[2], line)
     else:
       for item in Find_subtitution(line):
         if service_name in item and not '__' in item:
           to_be_replaced = service_name + Is_api_in_item(item)
-          replacement = subtitutes[1] + Is_api_in_item(item)
-          line = line.replace(
-            to_be_replaced,
-            replacement
-          )
+          replacement = subtitutes[1] + Is_api_in_item(item).replace('-','_')
+          if Not_inside_tf_var(item, to_be_replaced):
+            line = line.replace(
+              to_be_replaced,
+              replacement
+            )
   elif re.match(regex_internal, line):
     line = 'internal = ' + internal
 
@@ -390,25 +425,6 @@ def Is_api_in_item(item):
 
 
 def Subtitute_tf_vars(lobl, tf_file, directory):
-
-  '''
-  for item in lobl:
-    if 'name' in item[0]:
-      name = item[0]
-    elif 'url' in item[0]:
-      url = item[0]
-    elif 'fqdn' in item[0]:
-      fqdn = item[0]
-    elif 'internal' in item[0]:
-      internal = item[0]
-
-  service_name = Tf_file_parse(tf_file)
-
-  command = ("grep -rl '%s' %s" % (service_name, os.path.join(directory)))
-  stdout = subprocess.getoutput(command)
-
-  paths_to_files_to_be_subtituted = set(stdout.split('\n'))
-  '''
 
   regex_url = re.compile('.*http(|s)\:\\/\\/.*')
   regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
