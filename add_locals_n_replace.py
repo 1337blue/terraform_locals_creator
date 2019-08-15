@@ -67,6 +67,8 @@ def Find_subtitution(line):
 
 def Subtitute_w_tf_vars(line, lobl):
 
+  locals_block = Get_locals_block(lobl)
+
   api_suffix = '-api'
 
   subtitutes = []
@@ -85,17 +87,24 @@ def Subtitute_w_tf_vars(line, lobl):
   regex_fqdn = re.compile(regex_fqdn_str)
   regex_url = re.compile(regex_url_str[:-2] + regex_fqdn_str)
 
-  if service_name in line:
+  if service_name in line and line not in locals_block and ('=' in line or ':' in line):
     if re.match(re.compile(regex_url_str + api_suffix), line):
       line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), subtitutes[3], line)
     elif re.match(re.compile(regex_url_str), line):
       line = re.sub(regex_url_str[2:-2], subtitutes[3], line)
     elif re.match(re.compile(regex_fqdn_api_str), line):
-      print('fqdn-api')
       line = re.sub(regex_fqdn_api_str[2:-2], subtitutes[2], line)
     elif re.match(re.compile(regex_fqdn_str), line):
-      print('fqdn')
       line = re.sub(regex_fqdn_str[2:-2], subtitutes[2], line)
+    else:
+      for item in Find_subtitution(line):
+        if service_name in item and not '__' in item:
+          to_be_replaced = service_name + Is_api_in_item(item)
+          replacement = subtitutes[1] + Is_api_in_item(item)
+          line = line.replace(
+            to_be_replaced,
+            replacement
+          )
   elif re.match(regex_internal, line):
     line = 'internal = ' + internal
 
