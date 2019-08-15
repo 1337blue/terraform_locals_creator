@@ -6,6 +6,13 @@ import re
 import subprocess
 import argparse
 
+LOCALS_ORDER = [
+  'is_internal',
+  'name',
+  'fqdn',
+  'url'
+]
+
 def parse_options(operations=[]):
   '''
   parse cli
@@ -176,9 +183,9 @@ def Is_internal(tf_file, directory):
   stdout = subprocess.getoutput(command)
 
   if len(stdout) > 0:
-    return False
+    return 'false'
   else:
-    return True
+    return 'true'
 
 
 def Get_locals(service_name, directory):
@@ -190,37 +197,38 @@ def Get_locals(service_name, directory):
     url
   Each key has a set as value that stands for the var name and the var value
   '''
-  internal = Is_internal(service_name, directory)
+  is_internal = Is_internal(service_name, directory)
   is_api = Is_api(service_name, directory)
   unsc_service_name = service_name.replace('-', '_')
+  name = service_name
 
   lobl = {}
 
-  lobl.update({'internal':
-    ('%s_is_internal' % unsc_service_name, '%s' % str(internal).lower())
+  lobl.update({'is_internal':
+    ('__%s_is_internal' % unsc_service_name, '%s' % is_internal)
   })
   lobl.update({'name':
-    ('%s_name' % unsc_service_name, '"%s"' % unsc_service_name)
+    ('__%s_name' % unsc_service_name, '"%s"' % name)
   })
   lobl.update({'fqdn':
-    ('%s_fqdn' % unsc_service_name, '"${local.%s_name}.${terraform.workspace}${local.%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+    ('__%s_fqdn' % unsc_service_name, '"${local.__%s_name}.${terraform.workspace}${local.__%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
     (unsc_service_name, unsc_service_name))
   })
   lobl.update({'url':
-    ('%s_url' % unsc_service_name, '"${local.%s_is_internal ? "http" : "https"} ://${local.%s_fqdn}"' %
+    ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}"' %
     (unsc_service_name, unsc_service_name))
   })
 
   if Is_api:
     lobl.update({'name-api':
-      ('%s_api_name' % unsc_service_name, '"${local.%s_name}-api"' % unsc_service_name)
+      ('__%s_api_name' % unsc_service_name, '"${local.__%s_name}-api"' % unsc_service_name)
     })
     lobl.update({'fqdn-api':
-      ('%s_api_fqdn' % unsc_service_name, '"${local.%s_name-api}.${terraform.workspace}${local.%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+      ('__%s_api_fqdn' % unsc_service_name, '"${local.__%s_name-api}.${terraform.workspace}${local.__%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
       (unsc_service_name, unsc_service_name))
     })
     lobl.update({'url-api':
-      ('%s_api_url' % unsc_service_name, '"${local.%s_is_internal ? "http" : "https"} ://${local.%s_fqdn-api}"' %
+      ('__%s_api_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn-api}"' %
       (unsc_service_name, unsc_service_name))
     })
 
@@ -230,26 +238,45 @@ def Get_locals(service_name, directory):
 
 def Get_locals_block(lobl):
 
-  locals_block = (
-    (
-      'locals {\n' +
-      '  %s = %s\n' +
-      '  %s = %s\n' +
-      '  %s = %s\n' +
-      '  %s = %s\n'
-    ) %
-    (
-      lobl.get('internal')[0], lobl.get('internal')[1],
-      lobl.get('name')[0], lobl.get('name')[1],
-      lobl.get('fqdn')[0], lobl.get('fqdn')[1],
-      lobl.get('url')[0], lobl.get('url')[1]
+  locals_block = 'locals {\n'
+
+  for key in LOCALS_ORDER:
+    locals_block += (
+      '  %s = %s\n' %
+      (
+        lobl.get(key)[0],
+        lobl.get(key)[1]
+      )
     )
-  )
+
+  locals_block += '  %s = {\n' % lobl.get('name')[1].replace('-', '_').replace('"', '')
+
+  for key in LOCALS_ORDER:
+    if key == 'name':
+      locals_block += (
+        '  %s = %s\n' %
+        (
+          key,
+          '"${local.%s}"' % lobl.get(key)[0]
+        )
+      )
+    else:
+      locals_block += (
+        '  %s = %s\n' %
+        (
+          key,
+          lobl.get(key)[1]
+        )
+      )
+
+
+  locals_block += '  }'
 
   api = ['name', 'fqdn', 'url']
 
   for item in api:
-    if lobl.get(item + '-api') != None:
+    if False:
+    #if lobl.get(item + '-api') != None:
       locals_block += (
         '  %s = %s\n' %
         (
