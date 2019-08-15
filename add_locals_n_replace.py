@@ -239,52 +239,78 @@ def Get_locals(service_name, directory):
 def Get_locals_block(lobl):
 
   locals_block = 'locals {\n'
+  indent = '  '
 
   for key in LOCALS_ORDER:
     locals_block += (
-      '  %s = %s\n' %
+      '%s%s = %s\n' %
       (
+        indent,
         lobl.get(key)[0],
         lobl.get(key)[1]
       )
     )
 
-  locals_block += '  %s = {\n' % lobl.get('name')[1].replace('-', '_').replace('"', '')
+  locals_block += (
+    '%s%s = {\n' % 
+    (
+      indent,
+      lobl.get('name')[1].replace('-', '_').replace('"', '')
+    )
+  )
+
+  indent += '  '
 
   for key in LOCALS_ORDER:
     if key == 'name':
       locals_block += (
-        '  %s = %s\n' %
+        '%s%s = %s\n' %
         (
+          indent,
           key,
           '"${local.%s}"' % lobl.get(key)[0]
         )
       )
     else:
       locals_block += (
-        '  %s = %s\n' %
+        '%s%s = %s\n' %
         (
+          indent,
           key,
           lobl.get(key)[1]
         )
       )
 
+  indent = indent[:-2]
 
-  locals_block += '  }'
+  locals_block += '%s}\n' % indent
 
-  api = ['name', 'fqdn', 'url']
+  api_suffix = '-api'
 
-  for item in api:
-    if False:
-    #if lobl.get(item + '-api') != None:
+  locals_block += (
+    '%s%s = {\n' % 
+    (
+      indent,
+      (lobl.get('name')[1] + api_suffix).replace('-', '_').replace('"', '')
+    )
+  )
+
+  indent += '  '
+
+  for item in LOCALS_ORDER:
+    if lobl.get(item + api_suffix) != None and item != 'is_internal':
       locals_block += (
-        '  %s = %s\n' %
+        '%s%s = %s\n' %
         (
-          lobl.get(item + '-api')[0], lobl.get(item + '-api')[1]
+          indent,
+          lobl.get(item + api_suffix)[0],
+          lobl.get(item + api_suffix)[1]
         )
       )
 
-  locals_block += '}'
+  while '  ' in indent:
+    indent = indent[:-2]
+    locals_block += '%s}\n' % indent
 
 
   return locals_block
