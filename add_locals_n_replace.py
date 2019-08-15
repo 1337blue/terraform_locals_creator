@@ -65,23 +65,42 @@ def Find_subtitution(line):
   return subtitutes
 
 
-def Subtitute_w_tf_var():
-  regex_url = re.compile('.*http(|s)\:\\/\\/.*')
-  regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
-  regex_internal = re.compile('\\s*internal\\s+\\=.*')
+def Subtitute_w_tf_vars(line, lobl):
 
-  for item in lobl:
-    if 'name' in item[0]:
-      name = item[0]
-    elif 'url' in item[0]:
-      url = item[0]
-    elif 'fqdn' in item[0]:
-      fqdn = item[0]
-    elif 'internal' in item[0]:
-      internal = item[0]
+  api_suffix = '-api'
+
+  subtitutes = []
+
+  service_name = lobl.get('name')[1].replace('"','')
+
+  for item in LOCALS_ORDER:
+    subtitutes.append('${lookup(local.%s, "%s")}' % (service_name, item))
+
+  regex_internal_str = '\\s*internal\\s+\\=.*'
+  regex_fqdn_str = '.*%s\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
+  regex_fqdn_api_str = '.*%s-api\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
+  regex_url_str = '.*http(|s)\:\\/\\/%s.*' % service_name
+
+  regex_internal = re.compile(regex_internal_str)
+  regex_fqdn = re.compile(regex_fqdn_str)
+  regex_url = re.compile(regex_url_str[:-2] + regex_fqdn_str)
+
+  if service_name in line:
+    if re.match(re.compile(regex_url_str + api_suffix), line):
+      line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), subtitutes[3], line)
+    elif re.match(re.compile(regex_url_str), line):
+      line = re.sub(regex_url_str[2:-2], subtitutes[3], line)
+    elif re.match(re.compile(regex_fqdn_api_str), line):
+      print('fqdn-api')
+      line = re.sub(regex_fqdn_api_str[2:-2], subtitutes[2], line)
+    elif re.match(re.compile(regex_fqdn_str), line):
+      print('fqdn')
+      line = re.sub(regex_fqdn_str[2:-2], subtitutes[2], line)
+  elif re.match(regex_internal, line):
+    line = 'internal = ' + internal
 
 
-
+  return line
 
 
 def Get_tf_files_wo_locals(terraform_files):
@@ -392,9 +411,23 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
 
   paths_to_files_to_be_subtituted = Get_tf_files_to_be_subtituted(tf_file, directory)
 
-  for path_to_file in paths_to_files_to_be_subtituted:
-    path_to_file = os.path.join(path_to_file)
 
+  for path_to_file in paths_to_files_to_be_subtituted:
+    file_content = ''
+    path_to_file = os.path.join(path_to_file)
+    with open(path_to_file) as file:
+      for line in file:
+        file_content += Subtitute_w_tf_vars(line, lobl)
+      file.close()
+
+    new_content = file_content
+
+    with open(path_to_file, 'w') as file:
+      file.seek(0)
+      file.write(new_content)
+      file.close()
+
+    '''
     with open(path_to_file) as file:
       file_content = ''
       for line in file:
@@ -421,9 +454,10 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
                 to_be_replaced,
                 tf_var % lobl.get(key)[0]
               )
+    '''
 
 
-              '''
+    '''
               if '"' in item[1:-1]:
                 tf_var = '${local.%s}'
               else:
@@ -436,9 +470,9 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
                 line = line.replace(item, name)
               elif re.match(regex_internal, line):
                 line = 'internal = ' + internal
-              '''
+    '''
 
-          '''
+    '''
         if (
           ( '=' in line or ': "' in line )
           and service_name in line
@@ -462,20 +496,7 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
             line = 'internal = ' + internal
           else:
             line = line.replace(service_name, tf_var % name)
-            '''
-
-          if '\"\"\$' in line:
-            while '\"\"' in line:
-              line = line.replace('\"\"', '\"')
-        file_content += line
-      file.close()
-
-    new_content = file_content
-
-    with open(path_to_file, 'w') as file:
-      file.seek(0)
-      file.write(new_content)
-      file.close()
+    '''
 
     print('Successfully subtituted vars in "%s"' % path_to_file)
 
