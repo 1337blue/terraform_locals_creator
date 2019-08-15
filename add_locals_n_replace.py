@@ -109,7 +109,7 @@ def Subtitute_w_tf_vars(line, lobl):
 
   for item in LOCALS_ORDER:
     if item != 'is_internal':
-      subtitutes.append('${lookup(local.api_%s, "%s-api")}' % (service_name, item))
+      subtitutes.append('${lookup(local.api_%s, "%s_api")}' % (service_name, item))
 
 
   regex_internal_str = '\\s*internal\\s+\\=.*'
@@ -123,18 +123,21 @@ def Subtitute_w_tf_vars(line, lobl):
 
   if service_name in line and line not in locals_block and ('=' in line or ':' in line):
     if re.match(re.compile(regex_url_str + Is_api_in_item(line)), line):
-      line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), (subtitutes[3] + '_api'), line)
+      line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), subtitutes[6], line)
     elif re.match(re.compile(regex_url_str), line):
       line = re.sub(regex_url_str[2:-2], subtitutes[3], line)
     elif re.match(re.compile(regex_fqdn_api_str), line):
-      line = re.sub(regex_fqdn_api_str[2:-2], (subtitutes[2] + '_api'), line)
+      line = re.sub(regex_fqdn_api_str[2:-2], subtitutes[5], line)
     elif re.match(re.compile(regex_fqdn_str), line):
       line = re.sub(regex_fqdn_str[2:-2], subtitutes[2], line)
     else:
       for item in Find_subtitution(line):
         if service_name in item and not '__' in item:
           to_be_replaced = service_name + Is_api_in_item(item)
-          replacement = subtitutes[1] + Is_api_in_item(item).replace('-','_')
+          if not 'api' in to_be_replaced:
+            replacement = subtitutes[1]
+          else:
+            replacement = subtitutes[4]
           if Not_inside_tf_var(item, to_be_replaced):
             line = line.replace(
               to_be_replaced,
@@ -284,14 +287,14 @@ def Get_locals(service_name, directory):
 
   if Is_api:
     lobl.update({'name-api':
-      ('__%s_api_name' % unsc_service_name, '"${local.__%s_name}-api"' % unsc_service_name)
+      ('__name_api', '"${local.__%s_name}-api"' % unsc_service_name)
     })
     lobl.update({'fqdn-api':
-      ('__%s_api_fqdn' % unsc_service_name, '"${local.__%s_name-api}.${terraform.workspace}${local.__%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
+      ('__fqdn_api', '"${local.__%s_name}-api.${terraform.workspace}${local.__%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
       (unsc_service_name, unsc_service_name))
     })
     lobl.update({'url-api':
-      ('__%s_api_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn-api}"' %
+      ('__url_api', '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}-api"' %
       (unsc_service_name, unsc_service_name))
     })
 
