@@ -43,6 +43,7 @@ def Get_tf_files_in_dir(dir):
 
   return terraform_files
 
+
 def Find_subtitution(line):
 
   i = -1
@@ -94,9 +95,9 @@ def Not_inside_tf_var(item, to_be_replaced):
       stack = 1
 
 
-def Subtitute_w_tf_vars(line, lobl):
+def Subtitute_w_tf_vars(line, lobl, tf_file, directory):
 
-  locals_block = Get_locals_block(lobl)
+  locals_block = Get_locals_block(lobl, tf_file, directory)
 
   api_suffix = '-api'
 
@@ -104,12 +105,14 @@ def Subtitute_w_tf_vars(line, lobl):
 
   service_name = lobl.get('name')[1].replace('"','')
 
+  unsc_service_name = service_name.replace('-', '_')
+
   for item in LOCALS_ORDER:
-    subtitutes.append('${lookup(local.%s, "%s")}' % (service_name, item))
+    subtitutes.append('${lookup(local.%s, "%s")}' % (unsc_service_name, item))
 
   for item in LOCALS_ORDER:
     if item != 'is_internal':
-      subtitutes.append('${lookup(local.%s_api, "%s_api")}' % (service_name, item))
+      subtitutes.append('${lookup(local.%s_api, "%s_api")}' % (unsc_service_name, item))
 
 
   regex_internal_str = '\\s*internal\\s+\\=.*'
@@ -160,8 +163,10 @@ def Get_tf_files_wo_locals(terraform_files):
       capture_lines = False
       name_n_fqdn_in_locals = False
       locals_block = ''
+      file_content = ''
       set_of_definitions = set()
       for line in file:
+        file_content += line
         if 'locals {' in line:
           capture_lines = True
         if capture_lines:
@@ -170,37 +175,9 @@ def Get_tf_files_wo_locals(terraform_files):
           capture_lines = False
           break
 
-    if len(locals_block) == 0:
+    if len(locals_block) == 0 and not 'api' in file_content and not 'https-redirect' in file_content:
       return key
 
-'''
-def Get_definition_from_tf_files(terraform_files):
-
-  regex_definition_start = re.compile('\s*\S+\s=\s<<DEFINITION')
-  regex_definition_end = re.compile('DEFINITION')
-  output = {}
-
-  for key in terraform_files:
-    with open(key) as file:
-      capture_lines = False
-      definition = ''
-      set_of_definitions = set()
-      for line in file:
-        if capture_lines and 'DEFINITION' not in line:
-          line = Subtitute_tf_vars(line)
-          definition += line
-        if not capture_lines and regex_definition_start.match(line):
-          capture_lines = True
-        if capture_lines and regex_definition_end.match(line):
-          capture_lines = False
-          set_of_definitions.add(definition)
-          definition = ''
-
-      if len(set_of_definitions) > 0:
-        output.update({key:set_of_definitions})
-
-  return output
-'''
 
 '''
 def Print_status(errors, no_of_tf_files, no_of_definitions, directory):
@@ -229,12 +206,23 @@ def Tf_file_parse(tf_file):
 
   tf_file_name = tf_file_name.group(0)[len(tf_file_prefix) + 1:-3]
 
+  tf_file_name = tf_file_name.replace('_', '-')
+
   return tf_file_name
 
 
 def Is_api(tf_file, directory):
 
-  command = ("grep -rP '.*%s-api.*' %s" % (tf_file, os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file))))
+  command = (
+    "grep -rP '.*%s-api.*' %s" % (
+      tf_file,
+      os.path.join(
+        directory,
+        'services/ct_backend_service_%s.tf' % (tf_file)
+      )
+    )
+  )
+
   stdout = subprocess.getoutput(command)
 
   if len(stdout) > 0:
@@ -302,7 +290,7 @@ def Get_locals(service_name, directory):
   return lobl
 
 
-def Get_locals_block(lobl):
+def Get_locals_block(lobl, tf_file, directory):
 
   locals_block = 'locals {\n'
   indent = '  '
@@ -328,24 +316,14 @@ def Get_locals_block(lobl):
   indent += '  '
 
   for key in LOCALS_ORDER:
-    if key == 'name':
-      locals_block += (
-        '%s%s = %s\n' %
-        (
-          indent,
-          key,
-          '"${local.%s}"' % lobl.get(key)[0]
-        )
+    locals_block += (
+      '%s%s = %s\n' %
+      (
+        indent,
+        key,
+        '"${local.%s}"' % lobl.get(key)[0]
       )
-    else:
-      locals_block += (
-        '%s%s = %s\n' %
-        (
-          indent,
-          key,
-          lobl.get(key)[1]
-        )
-      )
+    )
 
   indent = indent[:-2]
 
@@ -353,26 +331,27 @@ def Get_locals_block(lobl):
 
   api_suffix = '-api'
 
-  locals_block += (
-    '%s%s = {\n' % 
-    (
-      indent,
-      (lobl.get('name')[1] + api_suffix).replace('-', '_').replace('"', '')
-    )
-  )
-
-  indent += '  '
-
-  for item in LOCALS_ORDER:
-    if lobl.get(item + api_suffix) != None and item != 'is_internal':
-      locals_block += (
-        '%s%s = %s\n' %
-        (
-          indent,
-          lobl.get(item + api_suffix)[0],
-          lobl.get(item + api_suffix)[1]
-        )
+  if Is_api(tf_file, directory) :
+    locals_block += (
+      '%s%s = {\n' % 
+      (
+        indent,
+        (lobl.get('name')[1] + api_suffix).replace('-', '_').replace('"', '')
       )
+    )
+
+    indent += '  '
+
+    for item in LOCALS_ORDER:
+      if lobl.get(item + api_suffix) != None and item != 'is_internal':
+        locals_block += (
+          '%s%s = %s\n' %
+          (
+            indent,
+            lobl.get(item + api_suffix)[0],
+            lobl.get(item + api_suffix)[1]
+          )
+        )
 
   while '  ' in indent:
     indent = indent[:-2]
@@ -393,7 +372,7 @@ def Prefix_locals_block(lobl, tf_file, directory):
       file_content += line
 
 
-  new_content = Get_locals_block(lobl) + '\n' + file_content
+  new_content = Get_locals_block(lobl, tf_file, directory) + '\n' + file_content
 
   with open(path_to_file, 'w') as file:
     file.write(new_content)
@@ -433,7 +412,7 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
   regex_fqdn = re.compile('.*(\\-net0ps|comtravo)\\.com.*')
   regex_internal = re.compile('\\s*internal\\s+\\=.*')
 
-  locals_block = Get_locals_block(lobl)
+  locals_block = Get_locals_block(lobl, tf_file, directory)
 
   service_name = Tf_file_parse(tf_file)
 
@@ -445,7 +424,7 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
     path_to_file = os.path.join(path_to_file)
     with open(path_to_file) as file:
       for line in file:
-        file_content += Subtitute_w_tf_vars(line, lobl)
+        file_content += Subtitute_w_tf_vars(line, lobl, tf_file, directory)
       file.close()
 
     new_content = file_content
@@ -454,77 +433,6 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
       file.seek(0)
       file.write(new_content)
       file.close()
-
-    '''
-    with open(path_to_file) as file:
-      file_content = ''
-      for line in file:
-        if ('=' in line or ':' in line) and line not in locals_block:
-          for item in Find_subtitution(line):
-            if service_name in item and not '__' in item:
-              if '"' in line:
-                tf_var = '${local.%s}'
-              else:
-                tf_var = '"${local.%s}"'
-              if 'http' in item:
-                key = 'url' + Is_api_in_item(item)
-                to_be_replaced = key
-              elif '.com' in item:
-                key = 'fqdn' + Is_api_in_item(item)
-                to_be_replaced = service_name + Is_api_in_item(item) + '${terraform.workspace}'
-              elif service_name in item:
-                key = 'name' + Is_api_in_item(item)
-                to_be_replaced = service_name + Is_api_in_item(item)
-              #elif re.match(regex_internal, line):
-              #  line = 'internal = ' + internal
-
-              line = line.replace(
-                to_be_replaced,
-                tf_var % lobl.get(key)[0]
-              )
-    '''
-
-
-    '''
-              if '"' in item[1:-1]:
-                tf_var = '${local.%s}'
-              else:
-                tf_var = '"${local.%s}"'
-              if re.match(regex_url, item):
-                line = line.replace(item, tf_var % url)
-              elif re.match(regex_fqdn, line):
-                line = line.replace(item, tf_var % fqdn)
-              elif service_name in item:
-                line = line.replace(item, name)
-              elif re.match(regex_internal, line):
-                line = 'internal = ' + internal
-    '''
-
-    '''
-        if (
-          ( '=' in line or ': "' in line )
-          and service_name in line
-          and not "policy" in line
-          and not "role" in line
-          and not '"image":' in line
-          and not name in line
-          and not url in line
-          and not fqdn in line
-          and not internal in line
-          ):
-          if '"' in line:
-            tf_var = '${local.%s}'
-          else:
-            tf_var = '"${local.%s}"'
-          if re.match(regex_url, line):
-            line = line.replace(service_name, tf_var % url)
-          elif re.match(regex_fqdn, line):
-            line = line.replace(service_name, tf_var % fqdn)
-          elif re.match(regex_internal, line):
-            line = 'internal = ' + internal
-          else:
-            line = line.replace(service_name, tf_var % name)
-    '''
 
     print('Successfully subtituted vars in "%s"' % path_to_file)
 
@@ -546,16 +454,6 @@ def main():
 
   Subtitute_tf_vars(lobl, tf_file, DIR)
 
-'''
-  exit_code = Print_status(
-          errors,
-          len(tf_files_dictionary),
-          len(task_definitions),
-          DIR
-  )
-
-  sys.exit(exit_code)
-'''
 
 if __name__ == "__main__":
   main()
