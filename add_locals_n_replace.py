@@ -115,10 +115,10 @@ def Subtitute_w_tf_vars(line, lobl, tf_file, directory):
       subtitutes.append('${lookup(local.%s_api, "%s_api")}' % (unsc_service_name, item))
 
 
-  regex_internal_str = '\\s*internal\\s+\\=.*'
-  regex_fqdn_str = '.*%s\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
+  regex_internal_str = '\\s*\\"internal\\"\\s+\\=.*'
+  regex_fqdn_str = '.*%s\\.(\\$\\{terraform\\.workspace\\}(\\.|)|)(\\-net0ps|comtravo)\\.com.*' % service_name
   regex_fqdn_api_str = '.*%s-api\\.(\\$\\{terraform\\.workspace\\}\\.|)(\\-net0ps|comtravo)\\.com.*' % service_name
-  regex_url_str = '.*http(|s)\:\\/\\/%s.*' % service_name
+  regex_url_str = '.*http(|s)\\:\\/\\/%s' % regex_fqdn_str[2:]
 
   regex_internal = re.compile(regex_internal_str)
   regex_fqdn = re.compile(regex_fqdn_str)
@@ -128,6 +128,7 @@ def Subtitute_w_tf_vars(line, lobl, tf_file, directory):
     if re.match(re.compile(regex_url_str + Is_api_in_item(line)), line):
       line = re.sub((regex_url_str[2:-2] + api_suffix + regex_fqdn_str[len(service_name) + 2:-2]), subtitutes[6], line)
     elif re.match(re.compile(regex_url_str), line):
+      print(line)
       line = re.sub(regex_url_str[2:-2], subtitutes[3], line)
     elif re.match(re.compile(regex_fqdn_api_str), line):
       line = re.sub(regex_fqdn_api_str[2:-2], subtitutes[5], line)
@@ -147,7 +148,7 @@ def Subtitute_w_tf_vars(line, lobl, tf_file, directory):
               replacement
             )
   elif re.match(regex_internal, line):
-    line = 'internal = ' + internal
+    line = '"internal" = "%s"\n' % subtitutes[0]
 
 
   return line
@@ -236,7 +237,7 @@ def Is_internal(tf_file, directory):
   command = ("grep -rP '\s*\"internal\"\s*\=\s*true' %s" % os.path.join(directory, 'ct_backend_service_%s.tf' % (tf_file.replace('-','_'))))
   stdout = subprocess.getoutput(command)
 
-  if len(stdout) > 0:
+  if len(stdout) < 0:
     return 'false'
   else:
     return 'true'
@@ -269,7 +270,7 @@ def Get_locals(service_name, directory):
     (unsc_service_name, unsc_service_name))
   })
   lobl.update({'url':
-    ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}"' %
+    ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}/"' %
     (unsc_service_name, unsc_service_name))
   })
 
@@ -437,6 +438,19 @@ def Subtitute_tf_vars(lobl, tf_file, directory):
     print('Successfully subtituted vars in "%s"' % path_to_file)
 
 
+def Tf_fmt(directory):
+
+  command = "terraform fmt %s" % directory
+
+  stdout = subprocess.getoutput(command)
+
+  if len(stdout) > 0:
+    if not 'Error' in stdout:
+      print("Terraform format successfully apllied on:\n%s" % stdout)
+    else:
+      print("Terraform format found the followin error in:\n%s" % stdout)
+
+
 
 def main():
 
@@ -453,6 +467,8 @@ def main():
   Prefix_locals_block(lobl, tf_file, DIR)
 
   Subtitute_tf_vars(lobl, tf_file, DIR)
+
+  Tf_fmt(DIR)
 
 
 if __name__ == "__main__":
