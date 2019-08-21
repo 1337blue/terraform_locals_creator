@@ -270,7 +270,7 @@ def Get_locals(service_name, directory):
     (unsc_service_name, unsc_service_name))
   })
   lobl.update({'url':
-    ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}/"' %
+    ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"}://${local.__%s_fqdn}/"' %
     (unsc_service_name, unsc_service_name))
   })
 
