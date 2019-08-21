@@ -175,7 +175,7 @@ def Get_tf_files_wo_locals(terraform_files):
           capture_lines = False
           break
 
-    if len(locals_block) == 0 and not 'api' in file_content and not 'https-redirect' in file_content:
+    if len(locals_block) == 0 and not 'api' in file_content and not 'https-redirect' in file_content and not 'oauth2_role' in file_content:
       return key
 
 
@@ -233,7 +233,7 @@ def Is_api(tf_file, directory):
 
 def Is_internal(tf_file, directory):
 
-  command = ("grep -rP '\s*\"internal\"\s*\=\s*true' %s" % os.path.join(directory, 'services/ct_backend_service_%s.tf' % (tf_file)))
+  command = ("grep -rP '\s*\"internal\"\s*\=\s*true' %s" % os.path.join(directory, 'ct_backend_service_%s.tf' % (tf_file.replace('-','_'))))
   stdout = subprocess.getoutput(command)
 
   if len(stdout) > 0:
