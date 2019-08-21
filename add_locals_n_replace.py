@@ -176,7 +176,7 @@ def Get_tf_files_wo_locals(terraform_files):
           capture_lines = False
           break
 
-    if len(locals_block) == 0 and not 'api' in file_content and not 'https-redirect' in file_content and not 'oauth2_role' in file_content:
+    if len(locals_block) == 0 and not 'redirect_http_to_https' in file_content:
       return key
 
 
@@ -237,7 +237,7 @@ def Is_internal(tf_file, directory):
   command = ("grep -rP '\s*\"internal\"\s*\=\s*true' %s" % os.path.join(directory, 'ct_backend_service_%s.tf' % (tf_file.replace('-','_'))))
   stdout = subprocess.getoutput(command)
 
-  if len(stdout) < 0:
+  if len(stdout) < 1:
     return 'false'
   else:
     return 'true'
@@ -460,15 +460,19 @@ def main():
   
   tf_file = Get_tf_files_wo_locals(tf_files_dictionary)
 
-  service_name = Tf_file_parse(tf_file)
+  if tf_file != None:
+    service_name = Tf_file_parse(tf_file)
 
-  lobl = Get_locals(service_name, DIR)
+    lobl = Get_locals(service_name, DIR)
 
-  Prefix_locals_block(lobl, tf_file, DIR)
+    Prefix_locals_block(lobl, tf_file, DIR)
 
-  Subtitute_tf_vars(lobl, tf_file, DIR)
+    Subtitute_tf_vars(lobl, tf_file, DIR)
 
-  Tf_fmt(DIR)
+    Tf_fmt(DIR)
+
+  else:
+    print("No files found")
 
 
 if __name__ == "__main__":
