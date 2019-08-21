@@ -226,7 +226,7 @@ def Is_api(tf_file, directory):
 
   stdout = subprocess.getoutput(command)
 
-  if len(stdout) > 0:
+  if len(stdout) < 1:
     return False
   else:
     return True
@@ -253,7 +253,8 @@ def Get_locals(service_name, directory):
   Each key has a set as value that stands for the var name and the var value
   '''
   is_internal = Is_internal(service_name, directory)
-  is_api = Is_api(service_name, directory)
+  if Is_api(service_name, directory):
+    service_name = service_name + '-api'
   unsc_service_name = service_name.replace('-', '_')
   name = service_name
 
@@ -273,20 +274,6 @@ def Get_locals(service_name, directory):
     ('__%s_url' % unsc_service_name, '"${local.__%s_is_internal ? "http" : "https"}://${local.__%s_fqdn}/"' %
     (unsc_service_name, unsc_service_name))
   })
-
-  if Is_api:
-    lobl.update({'name-api':
-      ('name_api', '"${local.__%s_name}-api"' % unsc_service_name)
-    })
-    lobl.update({'fqdn-api':
-      ('fqdn_api', '"${local.__%s_name}-api.${terraform.workspace}${local.__%s_is_internal ? "-net0ps" : ".comtravo"}.com"' %
-      (unsc_service_name, unsc_service_name))
-    })
-    lobl.update({'url-api':
-      ('url_api', '"${local.__%s_is_internal ? "http" : "https"} ://${local.__%s_fqdn}-api"' %
-      (unsc_service_name, unsc_service_name))
-    })
-
 
   return lobl
 
